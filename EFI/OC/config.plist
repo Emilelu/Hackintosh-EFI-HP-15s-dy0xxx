@@ -336,9 +336,16 @@
 				</data>
 				<key>AAPL,slot-name</key>
 				<string>Internal@0,2,0</string>
-				<key>applbkl</key>
+				<key>AAPL01,override-no-connect</key>
 				<data>
-				AwAAAA==
+				AP///////wAhbQAoAQAAAA0gAQOAPyF4KuoVrFBFnyYO
+				UFQhCAA7gKnAlQCzAIH7qUBhQIGACOgAMPJwWoCwWIoA
+				uYghAAAeAAAA/QAYeB7/PAAKICAgICAgAAAA/ABHMjhY
+				UgogICAgICAgQRkAoFDQKSAwIDUAuYghAAAeAYECA1vy
+				UgB2YV5fYF2QHz9AAQASEwQpBSMJBweDAQAAbQMMABAA
+				OHggAGABAgNt2F3EAXiIMxoweAAAAOIPf+MOAHbjBcAA
+				5gYFAWBgAG0aAAACATB45gAAAAAArxkAoFDQKSAwIDUA
+				uYghAAAe1LwAoKCgKVAwIDUAAAAAAAAe/g==
 				</data>
 				<key>device-id</key>
 				<data>
@@ -354,15 +361,12 @@
 				<data>
 				AQAAAA==
 				</data>
-				<key>enable-hdmi20</key>
+				<key>framebuffer-con0-alldata</key>
 				<data>
-				AQAAAA==
+				AAAIAAIAAACYAAAAAQEJAAAIAADHAQAAAgQKAAAEAADH
+				AQAA
 				</data>
-				<key>framebuffer-con1-alldata</key>
-				<data>
-				AQUJAAAIAADHAQAA
-				</data>
-				<key>framebuffer-con1-enable</key>
+				<key>framebuffer-con0-enable</key>
 				<data>
 				AQAAAA==
 				</data>
@@ -777,24 +781,6 @@
 				<key>Arch</key>
 				<string>Any</string>
 				<key>BundlePath</key>
-				<string>rtw88.kext</string>
-				<key>Comment</key>
-				<string>disabled: superseded by AirPort_RTW88.kext</string>
-				<key>Enabled</key>
-				<false/>
-				<key>ExecutablePath</key>
-				<string>Contents/MacOS/rtw88</string>
-				<key>MaxKernel</key>
-				<string></string>
-				<key>MinKernel</key>
-				<string>20.0.0</string>
-				<key>PlistPath</key>
-				<string>Contents/Info.plist</string>
-			</dict>
-			<dict>
-				<key>Arch</key>
-				<string>Any</string>
-				<key>BundlePath</key>
 				<string>BlueToolFixup.kext</string>
 				<key>Comment</key>
 				<string>V2.7.3</string>
@@ -874,24 +860,6 @@
 				<true/>
 				<key>ExecutablePath</key>
 				<string>Contents/MacOS/IO80211FamilyLegacy</string>
-				<key>MaxKernel</key>
-				<string></string>
-				<key>MinKernel</key>
-				<string>23.0.0</string>
-				<key>PlistPath</key>
-				<string>Contents/Info.plist</string>
-			</dict>
-			<dict>
-				<key>Arch</key>
-				<string>Any</string>
-				<key>BundlePath</key>
-				<string>AirPort_RTW88.kext</string>
-				<key>Comment</key>
-				<string>Realtek AirPort WiFi (RTW88)</string>
-				<key>Enabled</key>
-				<false/>
-				<key>ExecutablePath</key>
-				<string>Contents/MacOS/AirPort_RTW88</string>
 				<key>MaxKernel</key>
 				<string></string>
 				<key>MinKernel</key>
@@ -1303,10 +1271,13 @@
 				</data>
 				<key>boot-args</key>
 				<data>
-				ZGVidWc9MHgxMDAga2VlcHN5bXM9MSAtYW1maXBhc3Ni
-				ZXRhIC1pZ2Z4YmxyIC12aTJjLWZvcmNlLXBvbGxpbmcg
-				LWJ0bGZ4YTJkcGNoZWNrIC1pZ2Z4ZHVtcCAtaWJ0Y29t
-				cGF0ZGJnIC1saWx1ZGJn
+				ZGVidWc9MHgxMDAga2VlcHN5bXM9MSAtdiAtYW1maXBh
+				c3NiZXRhIC1pZ2Z4YmxyIC12aTJjLWZvcmNlLXBvbGxp
+				bmcgLWJ0bGZ4YTJkcGNoZWNrIC1pYnRjb21wYXRkYmcg
+				aWdmeG9ubG49MSBpZ2Z4b25sbmZicz0weDAxMDAgaWdm
+				eGZjbXM9MSBpZ2Z4ZmNtc2Zicz0weDAxMDAgLWlnZnhp
+				MmNkYmcgLXdlZ2RiZyAtaWJ0cHdyYXAgLWlnZnhtcGM9
+				NjAw
 				</data>
 				<key>csr-active-config</key>
 				<data>
@@ -1380,14 +1351,14 @@
 			<key>AdviseFeatures</key>
 			<false/>
 			<key>MLB</key>
-			<string>C02929207GUJH4RAD</string>
+			<string>REPLACE_WITH_YOUR_MLB</string>
 			<key>MaxBIOSVersion</key>
 			<false/>
 			<key>ProcessorType</key>
 			<integer>0</integer>
 			<key>ROM</key>
 			<data>
-			u6TA0wO/
+			AAAAAAAA
 			</data>
 			<key>SpoofVendor</key>
 			<true/>
@@ -1396,9 +1367,9 @@
 			<key>SystemProductName</key>
 			<string>MacBookPro15,2</string>
 			<key>SystemSerialNumber</key>
-			<string>C02Z306AJHCC</string>
+			<string>REPLACE_WITH_YOUR_SERIAL</string>
 			<key>SystemUUID</key>
-			<string>0F83A3E7-AE52-48DD-B2CF-02FEFEDE5E1F</string>
+			<string>REPLACE_WITH_YOUR_UUID</string>
 		</dict>
 		<key>UpdateDataHub</key>
 		<true/>
