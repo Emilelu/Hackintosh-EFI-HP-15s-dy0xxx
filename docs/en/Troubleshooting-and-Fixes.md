@@ -251,6 +251,9 @@ When a bad `config.plist` change prevents the system from booting:
 
 ## 7. Safari Still 60fps on a 120Hz External Display
 
+> ✅ **Status: RESOLVED (verified on real hardware, 2026-11-10)** — after disabling the Safari feature flag "Prefer Page Rendering Updates near 60fps", testufo reports 120fps again.
+
+
 ### Symptom
 
 - The external display is confirmed at **120Hz** in System Information / Display settings;
