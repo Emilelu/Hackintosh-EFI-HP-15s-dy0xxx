@@ -321,3 +321,21 @@ Then reopen Safari. If your system settings have "restore / sync", confirm that 
 - [wailsapp/wails#6056](https://github.com/wailsapp/wails/issues/6056)
 
 > See the [Credits section of the main README](../../README.en.md#credits) for the full acknowledgements and all external links. For the detailed derivation of the HDMI connector, see the [HDMI fix notes](./HDMI-Fix-Notes.md); for Bluetooth event injection, see the [Bluetooth BLE HID fix notes](./Bluetooth-BLE-HID-Fix.md).
+
+
+---
+
+## 9. Internal display brightness resets after every reboot
+
+**Symptom**: brightness returns to default after each reboot.
+
+**Diagnosis**:
+- NVRAM `backlight-level` exists and updates when the slider moves (the value **is** saved)
+- OpenCore `NVRAM → Delete` does not remove it
+- The culprit is **`applbkl = 03000000`**: this custom backlight data prevents macOS from applying the saved `backlight-level` at boot
+
+**Fix**: **remove `applbkl`** from `DeviceProperties → PciRoot(0x0)/Pci(0x2,0x0)`, keep:
+- `enable-backlight-registers-fix = 01000000`
+- boot-arg `-igfxblr` (these two are what actually fix the "black screen for minutes at boot" issue)
+
+**Verified**: 2026-11-10, brightness persists across reboots after removing `applbkl`.
