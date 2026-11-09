@@ -2,6 +2,29 @@
 
 # HDMI 修复记录：从 VBT 到 `con1 busId = 1`
 
+> ⚠️ **2026-11-10 重要更正**
+>
+> 本文档早期版本认为 `AAPL01,override-no-connect` 是 HDMI 出图的必要条件。**这是错误的。**
+>
+> 实测确认：该 EDID override 不仅非必需，而且是**内核 panic 的根源**
+> （`IOAccelDisplayPipeTransaction2::set_transaction_args` 崩溃，见
+> [疑难问题与修复记录](./疑难问题与修复记录.md#10-内核-panicwindowserver--ioacceldisplaypipetransaction2)）。
+>
+> **现行可用配置（已移除 EDID override，无 panic，HDMI 2560×1440@120）**：
+> ```
+> AAPL,ig-platform-id        = 0900A53E
+> device-id                  = 0x3EA5
+> framebuffer-con0-alldata   = con0 bus00/type0x0002/0x0098, con1 bus01/type0x0800/0x01C7, con2 bus04/type0x0400/0x01C7
+> framebuffer-patch-enable   = 1
+> framebuffer-stolenmem      = 19MB (0x01300000)
+> framebuffer-fbmem          = 9MB  (0x00900000)
+> framebuffer-unifiedmem     = 2GB  (0x80000000)
+> boot-args += igfxonln=1 igfxonlnfbs=0x0100 igfxfcms=1 igfxfcmsfbs=0x0100
+> ```
+> 真正的关键因素是 **`con1 busId = 1`** + `type = 0x0800` + 四项 force-online/modeset 参数。
+
+
+
 > 返回 [主 README](../README.md)｜机型：HP 15s-dy0xxx / i7-8565U / macOS Tahoe 26.7.2
 
 本文记录本机 Intel UHD Graphics 620（原生 `0x3EA0`，spoof `0x3EA5`）在 macOS Tahoe 下点亮 HDMI 外接显示器的完整过程。结论先行：

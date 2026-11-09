@@ -2,6 +2,28 @@
 
 # HDMI Fix Notes: From VBT to `con1 busId = 1`
 
+> ⚠️ **Important correction (2026-11-10)**
+>
+> Earlier revisions of this document claimed `AAPL01,override-no-connect` was required for HDMI output.
+> **That was wrong.** Testing confirmed the EDID override is not only unnecessary — it is the
+> **root cause of kernel panics** (`IOAccelDisplayPipeTransaction2::set_transaction_args`, see
+> [Troubleshooting and Fixes](./Troubleshooting-and-Fixes.md#10-kernel-panic-windowserver--ioacceldisplaypipetransaction2)).
+>
+> **Current working configuration (no EDID override, no panics, HDMI 2560×1440@120)**:
+> ```
+> AAPL,ig-platform-id        = 0900A53E
+> device-id                  = 0x3EA5
+> framebuffer-con0-alldata   = con0 bus00/type0x0002/0x0098, con1 bus01/type0x0800/0x01C7, con2 bus04/type0x0400/0x01C7
+> framebuffer-patch-enable   = 1
+> framebuffer-stolenmem      = 19MB (0x01300000)
+> framebuffer-fbmem          = 9MB  (0x00900000)
+> framebuffer-unifiedmem     = 2GB  (0x80000000)
+> boot-args += igfxonln=1 igfxonlnfbs=0x0100 igfxfcms=1 igfxfcmsfbs=0x0100
+> ```
+> The real key factor is **`con1 busId = 1`** + `type = 0x0800` + the four force-online/modeset arguments.
+
+
+
 > Back to [main README](../../README.en.md) | Model: HP 15s-dy0xxx / i7-8565U / macOS Tahoe 26.7.2
 
 This document records the complete process of bringing up an external HDMI display on this machine's Intel UHD Graphics 620 (native `0x3EA0`, spoofed as `0x3EA5`) under macOS Tahoe. Conclusions first:

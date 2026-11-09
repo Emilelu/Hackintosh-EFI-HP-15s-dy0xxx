@@ -339,3 +339,58 @@ Then reopen Safari. If your system settings have "restore / sync", confirm that 
 - boot-arg `-igfxblr` (these two are what actually fix the "black screen for minutes at boot" issue)
 
 **Verified**: 2026-11-10, brightness persists across reboots after removing `applbkl`.
+
+
+---
+
+## 10. Kernel panic: WindowServer / IOAccelDisplayPipeTransaction2
+
+**Symptom**: system freezes randomly when an external display is connected (requires hard power-off). Closing the lid or dropping to 1080p does not avoid it.
+
+**Panic signature** (`/Library/Logs/DiagnosticReports/Kernel-*.panic`):
+
+```
+Panicked task: pid 204: WindowServer
+com.apple.iokit.IOAcceleratorFamily2 :
+  IOAccelDisplayPipeTransaction2::set_transaction_args + 0x5d4
+  <- IOAccelDisplayPipe::transaction_end
+    <- IOAccelDisplayPipeUserClient2::transactionEnd
+```
+
+Three more crashes with the same root cause (different processes):
+
+| Crashing function | Process |
+|---|---|
+| `IOAccelSysMemory::setPurgeable` | `systemstats` |
+| `IOAccelBufferMemoryDescriptorPool2::releaseDescriptors` | `iconservicesagent` |
+| `IOAccelSysMemory::unwire` (GART collector) | `kernel_task` |
+
+One carried an out-of-bounds report:
+
+```
+Probabilistic GZAlloc Report:
+  Kind   : out-of-bounds (high confidence)
+  Access : 2049 byte(s) past
+```
+
+**Root cause (confirmed by experiment): `AAPL01,override-no-connect` (custom EDID)**
+
+The framebuffer's own EDID read **fails** (`[EDID] fb1 : DP-EDID set offset failed: 0xe00002d6`),
+yet `AAPL01,override-no-connect` declares a display with full timing information to `WindowServer`.
+The two disagree, so every display-pipe transaction touches invalid metadata and panics.
+
+> ⚠️ **Key finding: `override-no-connect` is NOT required for HDMI output.**
+> After removing it, HDMI still runs 2560×1440@120.
+> What actually makes HDMI work: `con1 busId=1` + `type=0x0800` + `igfxonln=1 igfxonlnfbs=0x0100 igfxfcms=1 igfxfcmsfbs=0x0100`.
+
+**Fix**: delete `AAPL0X,override-no-connect` from `DeviceProperties → PciRoot(0x0)/Pci(0x2,0x0)`.
+
+**Verified**: 2026-11-10, after removal the machine ran 30+ minutes with the external display at 2560×1440@120 — **zero panics**.
+
+**Misconceptions cleared up**:
+- The earlier "fake 4K" — `Modeset ... 3840x2160 at 483400000 Hz encoded with 0x2 2 bpc` —
+  483.4 MHz cannot carry true 4K120 RGB (needs ~1188 MHz); the driver forced it with chroma
+  subsampling / reduced bit depth, hence blurry text. It was produced by a `scale-resolutions`
+  display override, not by real capability.
+- Never raise `framebuffer-stolenmem` blindly: this machine's BIOS DVMT is below 64 MB, so
+  setting `0x04000000` (64 MB) hangs at boot (verbose text) and needs PE recovery.
