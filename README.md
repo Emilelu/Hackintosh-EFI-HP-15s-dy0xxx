@@ -213,6 +213,7 @@ debug=0x100 keepsyms=1 -v -amfipassbeta -igfxblr -vi2c-force-polling -btlfxa2dpc
 | 问题 | 状态 | 说明 / 绕过 |
 |:---|:---:|:---|
 | 4K 输出不可用 | 已知限制 | 本机无 LSPCON，且 Tahoe 原生 HDMI 分支存在 300MHz `fMaxPixelClock` 限制；4K30 理论可行但模式表不读取 override EDID 的 DTD。详见 [HDMI 文档](./docs/HDMI-修复记录.md#8-为什么-4k-仍然不可用) |
+| HiDPI 缩放受限 | 已知限制 | 内屏 1920×1080 若开启 HiDPI，逻辑分辨率仅为 960×540，实际可用性有限；外接 4K 的 HiDPI 又依赖 4K 输出先可用。本项目未把 HiDPI 作为目标配置 |
 | 睡眠 / 唤醒未验证 | 待验证 | 尚未进行完整合盖、睡眠、唤醒、外接显示器热插拔测试；请自行验证后再依赖 |
 | 内置音频 layout-id 未记录 | 待核对 | AppleALC 已集成，但 codec 型号与 layout-id 需要从本机 `config.plist` 补齐 |
 | HDMI 音频未实听 | 待验证 | 日志有 `fEnableAudio=1`，但未记录独立扬声器测试结果 |

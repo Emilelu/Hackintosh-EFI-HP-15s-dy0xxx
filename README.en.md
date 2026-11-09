@@ -213,6 +213,7 @@ For the Bluetooth fix root cause, HCI event injection bytes, and safety switch, 
 | Issue | Status | Notes / Workaround |
 |:---|:---:|:---|
 | 4K output unavailable | Known limitation | This machine has no LSPCON; 4K30 is theoretically possible, but the mode table does not read the override EDID's DTD, and 4K60 is further limited by native TMDS / the 300MHz `fMaxPixelClock`. See the [HDMI document](./docs/en/HDMI-Fix-Notes.md#8-why-4k-is-still-unavailable) |
+| HiDPI scaling limited | Known limitation | If HiDPI is enabled on the 1920×1080 internal display, the logical resolution is only 960×540, which is of limited practical use; 4K HiDPI on an external display also depends on 4K output being available first. This project does not target HiDPI as a configuration |
 | Sleep / wake unverified | To be verified | Full lid-close, sleep, wake, and external-display hot-plug tests have not been performed; verify before relying on them |
 | Internal audio layout-id not recorded | To be confirmed | AppleALC is integrated, but the codec model and layout-id still need to be filled in from this machine's `config.plist` |
 | HDMI audio not listened to | To be verified | The log shows `fEnableAudio=1`, but no independent speaker test result has been recorded |
