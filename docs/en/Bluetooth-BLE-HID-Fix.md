@@ -307,3 +307,104 @@ See the [Credits section of the main README](../../README.en.md#credits) for the
 - [watchthelight-labs/WTLLegionBtFix](https://github.com/watchthelight-labs/WTLLegionBtFix)
 - [Emilelu/RealtekBTPatcher](https://github.com/Emilelu/RealtekBTPatcher)
 - [Emilelu/BlueToolFixup-Fix26](https://github.com/Emilelu/BlueToolFixup-Fix26)
+
+
+---
+
+## 9. Bluetooth keyboard broken after macOS 26.7.3 update (2026-11-10)
+
+**Symptom**: after updating from 26.7.2 to 26.7.3, the Bluetooth keyboard is discovered but never
+connects, and Bluetooth cycles on/off.
+
+### Two independent problems
+
+**Problem A: `bluetoothd` crashes in a loop (EXC_GUARD namespc 18)**
+
+Log:
+```
+bluetoothd ... Full corpse enqueued for bluetoothd
+bluetoothd | exception: EXC_GUARD, subtype GUARD_TYPE_USER, namespc 18, reason 2
+```
+The crash address corresponds to the **length check of `bluetoothInternalControllerInfo`**
+(it must be exactly 14 bytes).
+
+**Cause**: after the upgrade, NVRAM `bluetoothExternalDongleFailed` was set to `%01`
+(third-party dongle failed to initialise), so `bluetoothd` refused the controller and crashed.
+
+**Fix**: add both keys to `config.plist → NVRAM → Add` and `Delete`:
+```
+bluetoothExternalDongleFailed   = 00        (1 byte)
+bluetoothInternalControllerInfo = 00 x 14   (14 bytes)
+```
+The `Delete` list forces a reset at every boot, even if the system rewrites the value.
+After the fix the controller returns to `THIRD_PARTY_DONGLE`, `Firmware v61592`,
+`Address DC:F5:05:FF:E4:02`.
+
+**Problem B: keyboard still won't connect, stuck at `LE_READY_WAIT_FOR_LENGTH`**
+
+Even with Bluetooth stable, a pure-BLE keyboard connects then stops at `LE_READY_WAIT_FOR_LENGTH`,
+then disconnects after 30 s with `reason 722`.
+
+**Fix**: update `IntelBTPatcher.kext` (commit `b16fe69`). Key logic:
+
+| Feature | Trigger |
+|---|---|
+| Hide LE Data Packet Length Extension bit (bit5) | **unconditional** (so bluetoothd can initiate a connection) |
+| Inject LE Data Length Change event (0x07) | gated by `-ibtpwrap` |
+| Inject LE PHY Update Complete event (0x0C) | **removed** (causes Bluetooth soft-reset on 26.7.3) |
+| Forward original HCI events | **always kept** (avoids panic) |
+
+> ⚠️ **Earlier bug**: a `if(!g_wrapEnabled) return;` at the top of `rewriteHciEvent`
+> stopped the original forwarding and caused a kernel panic. Removed; only the rewrite/inject
+> paths are gated.
+
+**Verified** (real pairing success):
+```
+Data Length Changed ... ready-state: wait-for-length, phy-ready 0
+Le topology ... ready-state: LE_READY_IDLE
+Classic Pairing Agent successfully created
+Accepting pairing request from "82F8798D"
+Encryption is now enabled
+smpPairingCompleted ... status=0
+```
+`IBTPInjected=31`, `IBTPHandle=0x0010` confirm the injection used the real connection handle.
+
+### New `bm3_usb` module in 26.7.3
+
+26.7.3's `bluetoothd` adds a `bm3_usb` module (USB dongle probe) that natively supports 0BDA:B00A:
+```
+[bm3_usb][Found_USB_Dongle] -- FoundBluetoothInterfaces() for deviceClass (224),
+   idVendor = 0x0BDA, idProduct = 0xB00A returned true
+[bm3_usb] setting gUseInternalController to FALSE
+```
+So the Realtek controller is correctly recognised as `THIRD_PARTY_DONGLE`. This module is not the problem.
+
+### Fixed & committed after this
+
+- `config.plist` (sanitised), boot-args include `-ibtpwrap`
+- `config.plist.KNOWNGOOD-BT-BLEHID-FIXED` (verified working snapshot)
+- `Kexts/IntelBTPatcher.kext` (`b16fe69` build, sha256 `89f9b0c8...`)
+
+### Key diagnostic commands
+
+```bash
+# controller state
+system_profiler SPBluetoothDataType
+
+# is bluetoothd crashing?
+pgrep -x bluetoothd
+log show --last 5m --predicate 'process == "kernel"' --style compact | grep -c 'corpse enqueued for bluetoothd'
+
+# patcher counters (IORegistry)
+ioreg -lw0 | grep -oE '"IBTP(Injected|Handle|EDLClear|WrapEnabled)" = <[^>]*>'
+
+# LE connection state
+log show --last 2m --style compact --predicate 'subsystem == "com.apple.bluetooth"' | grep -E 'Le topology|ready-state'
+```
+
+### Troubleshooting checklist
+1. First confirm the NVRAM Bluetooth variables are not corrupted (Problem A)
+2. If Bluetooth is stable but the keyboard still won't connect, watch whether `IBTPInjected`
+   increments on connect (whether the Problem-B patch fired)
+3. If the system connects but is stuck at `LE_READY_WAIT_FOR_LENGTH`, confirm the
+   Data Length Change injection is executing
