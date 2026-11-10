@@ -1300,9 +1300,8 @@
 				c3NiZXRhIC1pZ2Z4YmxyIC12aTJjLWZvcmNlLXBvbGxp
 				bmcgLWJ0bGZ4YTJkcGNoZWNrIC1pYnRjb21wYXRkYmcg
 				aWdmeG9ubG49MSBpZ2Z4b25sbmZicz0weDAxMDAgaWdm
-				eGZjbXM9MSBpZ2Z4ZmNtc2Zicz0weDAxMDAgLWlnZnhp
-				MmNkYmcgLXdlZ2RiZyAtaWJ0cHdyYXAgLWlnZnhtcGM9
-				NjAw
+				eGZjbXM9MSBpZ2Z4ZmNtc2Zicz0weDAxMDAgLWlnZnht
+				cGM9NjAwIC1pYnRwd3JhcA==
 				</data>
 				<key>csr-active-config</key>
 				<data>
@@ -1328,6 +1327,8 @@
 				<string>boot-args</string>
 				<string>ForceDisplayRotationInEFI</string>
 				<string>csr-active-config</string>
+				<string>bluetoothExternalDongleFailed</string>
+				<string>bluetoothInternalControllerInfo</string>
 			</array>
 		</dict>
 		<key>LegacyOverwrite</key>

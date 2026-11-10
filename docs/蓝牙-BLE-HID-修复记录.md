@@ -307,3 +307,96 @@ smpPairingCompleted address=Random D3:0B:... status=0
 - [watchthelight-labs/WTLLegionBtFix](https://github.com/watchthelight-labs/WTLLegionBtFix)
 - [Emilelu/RealtekBTPatcher](https://github.com/Emilelu/RealtekBTPatcher)
 - [Emilelu/BlueToolFixup-Fix26](https://github.com/Emilelu/BlueToolFixup-Fix26)
+
+
+---
+
+## 9. macOS 26.7.3 升级后蓝牙键盘失效（2026-11-10）
+
+**症状**：从 26.7.2 升级到 26.7.3 后，蓝牙键盘扫描得到但连不上，蓝牙反复开关。
+
+### 两个独立问题
+
+**问题 A：`bluetoothd` 反复崩溃（EXC_GUARD namespc 18）**
+
+日志：
+```
+bluetoothd ... Full corpse enqueued for bluetoothd
+bluetoothd | exception: EXC_GUARD, subtype GUARD_TYPE_USER, namespc 18, reason 2
+```
+崩溃地址对应 `bluetoothInternalControllerInfo` 的**长度校验**（必须恰好 14 字节）。
+
+**原因**：升级后 NVRAM 里的 `bluetoothExternalDongleFailed` 被写成 `%01`（第三方 dongle 初始化失败），
+导致 `bluetoothd` 拒绝使用控制器后反复崩溃。
+
+**修复**：在 `config.plist → NVRAM → Add` 和 `Delete` 里都加入：
+```
+bluetoothExternalDongleFailed   = 00        (1 字节)
+bluetoothInternalControllerInfo = 00 × 14   (14 字节)
+```
+`Delete` 列表保证每次开机强制重置，即使系统再次写坏也不怕。
+修复后控制器恢复 `THIRD_PARTY_DONGLE`、`Firmware v61592`、`Address DC:F5:05:FF:E4:02`。
+
+**问题 B：键盘仍连不上，卡 `LE_READY_WAIT_FOR_LENGTH`**
+
+即使蓝牙稳定，纯 BLE 键盘连接后仍停在 `LE_READY_WAIT_FOR_LENGTH`，30 秒后 `reason 722` 断开。
+
+**修复**：更新 `IntelBTPatcher.kext`（提交 `b16fe69`），关键逻辑调整为：
+| 功能 | 触发条件 |
+|---|---|
+| 隐藏 LE Data Packet Length Extension 位 (bit5) | **无条件**（让 bluetoothd 能发起连接） |
+| 注入 LE Data Length Change 事件 (0x07) | `-ibtpwrap` 控制 |
+| 注入 LE PHY Update Complete 事件 (0x0C) | **彻底移除**（26.7.3 上会引起蓝牙软复位） |
+| 原始 HCI 事件转发 | **始终保留**（避免 panic） |
+
+> ⚠️ **之前的 bug**：曾在 `rewriteHciEvent` 开头写 `if(!g_wrapEnabled) return;`，
+> 这会导致原始事件转发被中断、触发 kernel panic。已移除，只把「改写/注入」包进门控。
+
+**验证**（实测配对成功）：
+```
+Data Length Changed ... ready-state: wait-for-length, phy-ready 0
+Le topology ... ready-state: LE_READY_IDLE
+Classic Pairing Agent successfully created
+Accepting pairing request from "82F8798D"
+Encryption is now enabled
+smpPairingCompleted ... status=0
+```
+`IBTPInjected=31`、`IBTPHandle=0x0010` 确认注入使用真实连接句柄。
+
+### 26.7.3 新增的 `bm3_usb` 模块
+
+26.7.3 的 `bluetoothd` 新增 `bm3_usb` 模块（USB dongle 探测），它原生支持 0BDA:B00A：
+```
+[bm3_usb][Found_USB_Dongle] -- FoundBluetoothInterfaces() for deviceClass (224),
+   idVendor = 0x0BDA, idProduct = 0xB00A returned true
+[bm3_usb] setting gUseInternalController to FALSE
+```
+因此可以正常识别 Realtek 控制器为 `THIRD_PARTY_DONGLE`。这个模块本身不是问题。
+
+### 修复后固化的配置
+
+- `config.plist`（已脱敏），boot-args 含 `-ibtpwrap`
+- `config.plist.KNOWNGOOD-BT-BLEHID-FIXED`（已验证可用快照）
+- `Kexts/IntelBTPatcher.kext`（`b16fe69` 构建，sha256 `89f9b0c8...`）
+
+### 关键诊断命令
+
+```bash
+# 蓝牙控制器状态
+system_profiler SPBluetoothDataType
+
+# 检查 bluetoothd 是否崩溃
+pgrep -x bluetoothd
+log show --last 5m --predicate 'process == "kernel"' --style compact | grep -c 'corpse enqueued for bluetoothd'
+
+# 补丁注入计数（IORegistry）
+ioreg -lw0 | grep -oE '"IBTP(Injected|Handle|EDLClear|WrapEnabled)" = <[^>]*>'
+
+# LE 连接状态
+log show --last 2m --style compact --predicate 'subsystem == "com.apple.bluetooth"' | grep -E 'Le topology|ready-state'
+```
+
+### 排查要点
+1. 第一步确认 NVRAM 蓝牙变量是否被写坏（问题 A）
+2. 蓝牙稳定但仍连不上 → 看 `IBTPInjected` 是否在连接时增长（问题 B 的补丁是否触发）
+3. 系统能连接但卡 `LE_READY_WAIT_FOR_LENGTH` → 确认注入 Data Length Change 是否执行
