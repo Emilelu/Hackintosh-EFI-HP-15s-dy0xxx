@@ -526,13 +526,51 @@ once got misread as "the boot snapshot is corrupted".
    bluetoothd runs, the file always looks "bad", so a hash check would make the
    watchdog restart it every 60 seconds forever. v3 judges controller state only
    (`State` / `Firmware` / `Address`).
-3. **The occasional `EXC_BAD_ACCESS (SIGBUS)` is the inherent cost of this patch**,
+3. **The occasional `EXC_BAD_ACCESS (SIGBUS)` was the inherent cost of this patch**,
    not a hardware fault. bluetoothd is an APFS-compressed binary; once a page has
    been rewritten, a later fault must re-decompress it from the compressed stream,
    the result no longer matches the recorded hash, the fault fails and the process
-   takes a `SIGBUS`. Fixing that means changing *where* the patch lands (a
-   non-`__TEXT` site, or a function hook) — reinstalling macOS or replacing the SSD
-   will not help.
+   takes a `SIGBUS`. **This is now fixed** — see §12.1 below.
+
+### 12.1 The SIGBUS fix: drop the compression flag (2026-11-15)
+
+The crash came from the *hash-verified decompression path*, not from the rewritten
+bytes. So remove the compression flag: a plain file has no hash to mismatch.
+
+```sh
+sudo umount "/Volumes/Macintosh HD 1"
+sudo mount -o nobrowse -t apfs /dev/disk1s4 /System/Volumes/Update/mnt1
+sudo mount -uw /System/Volumes/Update/mnt1
+sudo chflags nocompressed /System/Volumes/Update/mnt1/usr/sbin/bluetoothd
+sudo bless --mount /System/Volumes/Update/mnt1 --bootefi --create-snapshot
+sudo reboot
+```
+
+(Requires `csrutil authenticated-root` to be disabled; `bless --create-snapshot`
+needs `--bootefi` and must not be given a boot.efi path argument.)
+
+Measured 58 minutes after booting the new snapshot:
+
+| | before | after |
+| --- | --- | --- |
+| `ls -lO` flags | `restricted,compressed` | `restricted` |
+| bluetoothd SIGBUS crashes | 3 on 11-14 evening | **0** |
+| real `apfs_announce_hash_mismatch` | 10 on 11-14, 32 on 11-10 | **0** |
+| controller | `attrib_on / v61592 c30136` | `attrib_on / v61592 c30136` |
+| encrypted connections | working | 2, still working |
+
+The patched bytes remain and `codesign -v` still fails — expected and harmless.
+What disappeared is the hash-checked decompression path.
+
+**A macOS update can re-compress or replace the file and silently undo this.**
+Hence the `com.local.btdecomp.track` daemon (`/usr/local/bin/bt-decomp-track.py`,
+samples every 15 minutes into `/var/log/bt-decomp-fix.log`):
+
+```
+2026-11-15 00:24:57 decomp=yes crashes=63 newest=… mismatch=0 bt=attrib_on|v61592 c30136|DC:F5:05:FF:E4:02
+```
+
+`decomp=NO` or `mismatch>0` means an update undid the fix; rerun the five commands.
 
 ### Also: `-25291` is not why the keyboard fails
 

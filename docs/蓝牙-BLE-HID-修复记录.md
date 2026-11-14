@@ -508,9 +508,49 @@ shasum -a 256 /usr/sbin/bluetoothd     # -> BAD  c31f8ff4…
    「坏的」，哈希判据会让看门狗每 60 秒触发一次无限重启。现在的 v3 只看控制器状态
    （`State` / `Firmware` / `Address`）。
 3. **偶发的 `EXC_BAD_ACCESS (SIGBUS)` 是这个补丁的固有代价**，不是硬件故障。bluetoothd 是
-   APFS 压缩二进制，页被改写后再次缺页需要从压缩流重新解压，解出来的字节与记录的哈希不符，
-   缺页失败 → 进程收 `SIGBUS`。要根治只能改补丁的落点（改到非 `__TEXT` 位置或改为函数 hook），
-   不能靠重装系统或换 SSD。
+   APFS 压缩（decmpfs）二进制，页被改写后再次缺页需要从压缩流重新解压，解出来的字节与记录的
+   分块哈希不符，缺页失败 → 进程收 `SIGBUS`。**这个已经修好了**，见下面 §12.1。
+
+### 12.1 SIGBUS 的修复：去掉 bluetoothd 的压缩标志（2026-11-15）
+
+既然崩溃的根源是「压缩流的哈希校验」而不是「页被改写」，那就把压缩标志去掉，让文件变成
+普通文件，没有哈希可校验。
+
+```sh
+sudo umount "/Volumes/Macintosh HD 1"
+sudo mount -o nobrowse -t apfs /dev/disk1s4 /System/Volumes/Update/mnt1
+sudo mount -uw /System/Volumes/Update/mnt1
+sudo chflags nocompressed /System/Volumes/Update/mnt1/usr/sbin/bluetoothd
+sudo bless --mount /System/Volumes/Update/mnt1 --bootefi --create-snapshot
+sudo reboot
+```
+
+（前提：`csrutil authenticated-root` 为 disabled。`csrutil status` 显示
+`Filesystem Protections: disabled`。`bless --create-snapshot` 必须带 `--bootefi`，且不能带
+boot.efi 路径参数。）
+
+实测（新快照开机 58 分钟后）：
+
+| | 修复前 | 修复后 |
+| --- | --- | --- |
+| `ls -lO` 标志 | `restricted,compressed` | `restricted` |
+| bluetoothd SIGBUS 崩溃 | 11-14 晚 3 次 | **0** |
+| 真实 `apfs_announce_hash_mismatch` | 11-14 有 10 条、11-10 有 32 条 | **0** |
+| 控制器 | `attrib_on / v61592 c30136` | `attrib_on / v61592 c30136` |
+| 加密连接 | 正常 | 2 次，仍正常 |
+
+补丁字节仍然存在、`codesign -v` 仍然失败——那是预期且无害的。消失的只是「哈希校验过的解压
+路径」。
+
+**注意：macOS 系统更新可能重新压缩或替换这个文件，从而静默撤销此修复。** 所以加了守护进程
+`com.local.btdecomp.track`（`/usr/local/bin/bt-decomp-track.py`，每 15 分钟采样一次，写入
+`/var/log/bt-decomp-fix.log`）：
+
+```
+2026-11-15 00:24:57 decomp=yes crashes=63 newest=… mismatch=0 bt=attrib_on|v61592 c30136|DC:F5:05:FF:E4:02
+```
+
+`decomp=NO` 或 `mismatch>0` 就说明修复被系统更新撤销了，需要重跑上面五条命令。
 
 ### 顺带澄清：`-25291` 也不是键盘连不上的原因
 
