@@ -10,7 +10,7 @@ RTL8821CE 是一颗 **Wi-Fi + Bluetooth 二合一** 的 combo 芯片：Wi-Fi 走
 
 | 功能 | 总线 | 硬件 ID | 驱动 / 组件 |
 |:---|:---|:---|:---|
-| Wi-Fi | PCIe | `10EC:C821` / subsystem `103C:831A` | `AirPortRTW.kext` 1.2.0 + `RealtekAirPortRTWFix` |
+| Wi-Fi | PCIe | `10EC:C821` / subsystem `103C:831A` | `AirPortRTW.kext` 1.2.1-coex + `RealtekAirPortRTWFix` |
 | 蓝牙 | USB | `0BDA:B00A` | `RealtekBluetoothFirmware.kext` 1.0.2（官方 release）+ `BlueToolFixup.kext` 2.7.3 + `RealtekBTPatcher.kext` |
 | RF / 天线 | — | 2.4GHz / 5GHz 共用 | 硬件共存仲裁，驱动侧不可完全隔离 |
 
@@ -37,10 +37,10 @@ RTL8821CE 是一颗 **Wi-Fi + Bluetooth 二合一** 的 combo 芯片：Wi-Fi 走
 
 ## 4. 修复组合
 
-### 4.1 Wi-Fi：AirPortRTW 1.2.0 + RealtekAirPortRTWFix
+### 4.1 Wi-Fi：AirPortRTW 1.2.1-coex + RealtekAirPortRTWFix
 
-- **`AirPortRTW.kext` 1.2.0**：上游 [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW)，提供 RTL8821CE 的 macOS 原生 `IO80211` Wi-Fi 接口。
-- **`RealtekAirPortRTWFix`**：[Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix)，在保留 1.2.0 功能的基础上修复 RTL8821CE 的 Wi-Fi / BT 射频共存问题。实际使用时按该仓库的说明，把修复合并进 `AirPortRTW.kext` 构建或作为对应补丁加载，**不要同时保留两个来源不明的 `AirPortRTW` 副本**。
+- **`AirPortRTW.kext` 1.2.1-coex**：上游 [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW) 1.2.1，提供 RTL8821CE 的 macOS 原生 `IO80211` Wi-Fi 接口。1.2.1 新增 **PCI TX 串行化**：数据帧、扫描空帧与管理帧不再抢同一个发送 slot，修复「大文件下载卡死、但系统仍显示 Wi-Fi 已连接」。
+- **`RealtekAirPortRTWFix`**：[Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix)，在保留上游 1.2.1 功能的基础上修复 RTL8821CE 的 Wi-Fi / BT 射频共存问题（唯一改动是禁用 `rtw88_force_wifi_only()`）。实际使用时按该仓库的说明，把修复合并进 `AirPortRTW.kext` 构建或作为对应补丁加载，**不要同时保留两个来源不明的 `AirPortRTW` 副本**。
 - 本机验证：**WPA3-Personal 可正常连接**，Wi-Fi 繁忙时蓝牙音频 / BLE 的断连频率明显下降。
 
 ### 4.2 蓝牙：官方 release 二进制是硬性要求
@@ -59,7 +59,7 @@ RTL8821CE 是一颗 **Wi-Fi + Bluetooth 二合一** 的 combo 芯片：Wi-Fi 走
 
 - 两者都试图匹配 Realtek 的同一 PCI 设备（`10EC:C821`）；同时加载会出现重复匹配、抢占 `IOService`、随机哪个驱动先绑定，表现为 Wi-Fi 时好时坏、开机卡住、甚至 kernel panic。
 - `AirPort_RTW88` 面向 RTW88 系列（如 RTL8822CE 等），其设备 ID 表与 RTL8821CE 的 `AirPortRTW` 路径不同；混用没有收益。
-- 只保留 `AirPortRTW.kext` 1.2.0（含 `RealtekAirPortRTWFix` 修复）这一套。
+- 只保留 `AirPortRTW.kext` 1.2.1-coex（含 `RealtekAirPortRTWFix` 修复）这一套。
 
 ## 5. 推荐加载顺序
 
@@ -67,7 +67,7 @@ RTL8821CE 是一颗 **Wi-Fi + Bluetooth 二合一** 的 combo 芯片：Wi-Fi 走
 
 ```text
 Lilu.kext
-AirPortRTW.kext                 (1.2.0 + RealtekAirPortRTWFix 构建)
+AirPortRTW.kext                 (1.2.1-coex + RealtekAirPortRTWFix 构建)
 RealtekBluetoothFirmware.kext   (1.0.2 官方 release)
 BlueToolFixup.kext              (2.7.3)
 RealtekBTPatcher.kext
@@ -82,6 +82,9 @@ RealtekBTPatcher.kext
 ```bash
 # 查看 Wi-Fi 接口与当前连接
 system_profiler SPAirPortDataType
+
+# 确认驱动版本为 1.2.1-coex
+ioreg -lw0 -c AirPortRTW | grep DriverBuild
 
 # 查看 PCI 设备是否正确绑定
 ioreg -lw0 | grep -i "10ec,c821" -A 5
@@ -128,7 +131,7 @@ ioreg -lw0 | grep -oE '"IBTP[A-Za-z]+" = <[^>]*>'
 
 ## 9. 参考资料
 
-- [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW) —— AirPortRTW 上游。
+- [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW) —— AirPortRTW 上游（1.2.1）。
 - [Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix) —— Wi-Fi / 蓝牙共存修复。
 - [thegwchr/RealtekBluetoothFirmware](https://github.com/thegwchr/RealtekBluetoothFirmware) —— Realtek 蓝牙固件加载器（本机使用 1.0.2 官方 release）。
 - [acidanthera/BrcmPatchRAM](https://github.com/acidanthera/BrcmPatchRAM) —— BlueToolFixup 上游。

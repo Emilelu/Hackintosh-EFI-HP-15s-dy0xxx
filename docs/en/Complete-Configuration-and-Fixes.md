@@ -213,7 +213,7 @@ reboot
 
 | Item | Notes |
 |---|---|
-| `AirPortRTW 1.2.0` | Supports **WPA3-Personal** |
+| `AirPortRTW 1.2.1-coex` | Supports **WPA3-Personal**; 1.2.1 adds PCI TX serialization |
 | `RealtekAirPortRTWFix` | Restores the coexistence handshake with Bluetooth |
 | Driver conflict | **Must not load** `AirPort_RTW88.kext` and `AirPortRTW.kext` at the same time |
 | Bluetooth firmware | `RealtekBluetoothFirmware` **must use the official release binary**; a self-compiled build completely breaks Bluetooth RX (zero advertising, 0 results for classic inquiries) |

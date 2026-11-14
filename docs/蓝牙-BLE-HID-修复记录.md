@@ -400,3 +400,57 @@ log show --last 2m --style compact --predicate 'subsystem == "com.apple.bluetoot
 1. 第一步确认 NVRAM 蓝牙变量是否被写坏（问题 A）
 2. 蓝牙稳定但仍连不上 → 看 `IBTPInjected` 是否在连接时增长（问题 B 的补丁是否触发）
 3. 系统能连接但卡 `LE_READY_WAIT_FOR_LENGTH` → 确认注入 Data Length Change 是否执行
+
+---
+
+## 11. IntelBTPatcher 2.6.0 / 2.6.1：唤醒 panic 修复与 boot guard
+
+### 2.6.0 —— 修复睡眠唤醒后的内核 UAF panic
+
+**症状**：合盖睡眠、唤醒后约 0.8 秒 kernel panic，`Kernel-*.panic` 栈为：
+
+```
+Kernel trap type = 14=page fault, Fault CR2: 0x268
+com.zxystd.IntelBTPatcher : CIntelBTPatcher::newHostDeviceRequest(...) + 0x160
+ <- IOUSBHostDevice::deviceRequest
+ <- IOUSBHostDevice::getDescriptorGated <- getDescriptor <- getDeviceDescriptor
+ <- CIntelBTPatcher::captureIntelInterruptPipe + 0x40
+ <- CIntelBTPatcher::newInitPipeConfig + 0x40
+ <- AppleUSBXHCIPipe::withDescriptorsAndOwners <- AppleUSBXHCIDevice::createPipe
+ <- IOUSBHostDevice::start (_block_invoke)
+```
+
+**根因**：旧代码把 `IOUSBHostDevice *` 存成裸指针 `g_btDevice` 且不 retain。睡眠唤醒时 USB 重新枚举，旧设备对象被释放；新设备 `start()` 时钩子再次用这个悬空指针写 IORegistry 属性，`g_btDevice->setProperty()` 通过已失效的 vtable 调用（`callq *0x268(%rcx)`，`%rcx` 为 0）→ page fault。
+
+**修复**（提交 `98b3228`）：
+- `setBtDevice()`：`retain()` 新设备后再替换，旧指针 `release()`。
+- `btDeviceUsable()`：调用前检查指针非空 **且** 首字段（vtable 槽）非空。
+- `setPropData()` / `setDeviceData()`：`OSData::withBytes` 之后显式 `release()`，修掉每次 HCI 请求泄漏一个内核对象的 bug。
+
+### 2.6.1 —— boot guard（默认关闭）
+
+新增 `-ibtpguard` boot-arg：加上后改写逻辑在开机 60 秒内只观察不改写（`IBTPArmed=N` → `Y`）。
+
+它的用途是排查「开机初始化竞态」：实测证明四条开机错误
+（`OI_HCICMD_ReadLocalVersionInformation failed: STATUS 408`、`Failed to read local Fast LE Connection data ... result:11`、
+`LE_InitMultipleAdvertising failed: STATUS 152`、`Server.LE.Scan Failed to add rule`）
+**与本补丁无关**——同一条连接成功的日志里也全部存在，且 2026-11-10 的旧日志里就有。
+
+> 默认行为与 2.6.0 完全一致，除非显式加 `-ibtpguard`。
+
+### 本地构建（无需 Xcode）
+
+macOS 26 的 `ld` 不再自动合成 `_kmod_info`，直接用 clang 链 kext 会得到
+`kexts must have a _kmod_info symbol`，OpenCore 静默跳过该 kext。仓库脚本 `scripts/build-local.sh` 已处理：
+
+```sh
+zsh scripts/build-local.sh 2.6.1
+```
+
+它会生成 `kmod_info.cpp`、修补 `Info.plist` 的平台字段，并在结尾断言 `_kmod_info` 与 `CFBundleSupportedPlatforms` 存在。
+两个坑：`MacKernelSDK/Headers/TargetConditionals.h` 的 `TARGET_OS_OSX` 必须为 0；`-D` 的值不能带空格。
+
+### 当前固化版本
+
+- `Kexts/IntelBTPatcher.kext`：2.6.1，sha256 `c3967d6ed13d6e65a7a21775639c28413b76a63d1a7aa3eed9ef486b39667512`
+- boot-args 仍为 `-ibtpwrap`（不带 `-ibtpguard`，即 2.6.0 行为）

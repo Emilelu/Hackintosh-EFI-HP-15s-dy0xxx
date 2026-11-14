@@ -60,7 +60,7 @@
 | 内屏 eDP | ✅ | 1920×1080 @ 60Hz，原生 LVDS 连接器 |
 | HDMI 外接 | ✅ | **2560×1440 @ 120Hz**；`con1 busId = 1` 是关键 |
 | HDMI 音频 | ⚠️ 待实听验证 | 成功日志出现 `fEnableAudio=1`，但未做独立扬声器实听记录 |
-| Wi-Fi | ✅ | WPA3-Personal 可用；AirPortRTW 1.2.0 + `RealtekAirPortRTWFix` 共存补丁 |
+| Wi-Fi | ✅ | WPA3-Personal 可用；AirPortRTW 1.2.1-coex + `RealtekAirPortRTWFix` 共存补丁 |
 | 蓝牙 | ✅ | `RealtekBluetoothFirmware` 1.0.2 + `BlueToolFixup` 2.7.3 |
 | BLE HID 键盘 | ✅ | `RealtekBTPatcher.kext` + `-ibtpwrap`，本机实测配对成功 |
 | Xbox 手柄（Classic BR/EDR） | ✅ | 无需额外补丁 |
@@ -177,7 +177,7 @@ debug=0x100 keepsyms=1 -v -amfipassbeta -igfxblr -vi2c-force-polling -btlfxa2dpc
 | 内置音频 | `AppleALC.kext` | 版本与 layout-id 待核对 |
 | 触控板 | `VoodooI2C.kext`、`VoodooI2CHID.kext` | 版本待核对 |
 | 键盘 | `VoodooPS2Controller.kext` | 版本待核对 |
-| Wi-Fi | `AirPortRTW.kext` | 1.2.0，使用 [RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix) 的共存补丁构建 |
+| Wi-Fi | `AirPortRTW.kext` | 1.2.1-coex，使用 [RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix) 的共存补丁构建 |
 | 蓝牙固件 | `RealtekBluetoothFirmware.kext` | 1.0.2 官方 release 二进制 |
 | 蓝牙兼容 | `BlueToolFixup.kext` | 2.7.3 |
 | BLE HID 修复 | `RealtekBTPatcher.kext` | [Emilelu/RealtekBTPatcher](https://github.com/Emilelu/RealtekBTPatcher) |
@@ -195,8 +195,8 @@ debug=0x100 keepsyms=1 -v -amfipassbeta -igfxblr -vi2c-force-polling -btlfxa2dpc
 
 ### Wi-Fi
 
-- 驱动：`AirPortRTW.kext` 1.2.0（上游 [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW)）
-- 共存补丁：[Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix)，保留 AirPortRTW 1.2.0 功能并修复 RTL8821CE 的 Wi-Fi / BT RF 共存
+- 驱动：`AirPortRTW.kext` 1.2.1-coex（上游 [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW)）
+- 共存补丁：[Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix)，保留 AirPortRTW 1.2.1 功能并修复 RTL8821CE 的 Wi-Fi / BT RF 共存
 - 实测：**WPA3-Personal 可连接**
 
 ### 蓝牙
@@ -293,7 +293,7 @@ hp-efi-repo/
 ### Wi-Fi
 
 - [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW) —— AirPortRTW 上游，Realtek 原生 `IO80211` Wi-Fi 驱动。
-- [Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix) —— 保留 AirPortRTW 1.2.0 功能并恢复 Realtek BT 共存的补丁构建。
+- [Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix) —— 保留 AirPortRTW 1.2.1 功能并恢复 Realtek BT 共存的补丁构建。
 
 ### Safari / WebKit
 

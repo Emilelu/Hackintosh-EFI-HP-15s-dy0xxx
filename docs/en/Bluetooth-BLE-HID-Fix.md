@@ -408,3 +408,64 @@ log show --last 2m --style compact --predicate 'subsystem == "com.apple.bluetoot
    increments on connect (whether the Problem-B patch fired)
 3. If the system connects but is stuck at `LE_READY_WAIT_FOR_LENGTH`, confirm the
    Data Length Change injection is executing
+
+---
+
+## 11. IntelBTPatcher 2.6.0 / 2.6.1: wake-from-sleep panic fix and boot guard
+
+### 2.6.0 - fixing a kernel UAF panic after wake
+
+**Symptom**: about 0.8 s after waking from clamshell sleep, a kernel panic with this stack:
+
+```
+Kernel trap type = 14=page fault, Fault CR2: 0x268
+com.zxystd.IntelBTPatcher : CIntelBTPatcher::newHostDeviceRequest(...) + 0x160
+ <- IOUSBHostDevice::deviceRequest
+ <- IOUSBHostDevice::getDescriptorGated <- getDescriptor <- getDeviceDescriptor
+ <- CIntelBTPatcher::captureIntelInterruptPipe + 0x40
+ <- CIntelBTPatcher::newInitPipeConfig + 0x40
+ <- AppleUSBXHCIPipe::withDescriptorsAndOwners <- AppleUSBXHCIDevice::createPipe
+ <- IOUSBHostDevice::start (_block_invoke)
+```
+
+**Root cause**: the old code kept a bare `IOUSBHostDevice *` in `g_btDevice` without retaining it.
+On wake the USB stack re-enumerates and releases the old device object; when the new device's
+`start()` runs, the hook writes IORegistry properties through the stale pointer, so
+`g_btDevice->setProperty()` dispatches through a dead vtable (`callq *0x268(%rcx)` with `%rcx == 0`)
+and page-faults.
+
+**Fix** (commit `98b3228`):
+- `setBtDevice()` retains the new device before swapping and releases the old one.
+- `btDeviceUsable()` checks the pointer is non-null **and** its first field (the vtable slot) is non-null.
+- `setPropData()` / `setDeviceData()` explicitly release the `OSData::withBytes` object, fixing a
+  kernel-object leak on every HCI device request.
+
+### 2.6.1 - boot guard (off by default)
+
+`-ibtpguard` makes the rewriting logic observe-only for the first 60 s of uptime
+(`IBTPArmed=N` then `Y`). It exists to rule out the boot-time controller race: the four errors seen at
+every boot (`OI_HCICMD_ReadLocalVersionInformation failed: STATUS 408`,
+`Failed to read local Fast LE Connection data ... result:11`,
+`LE_InitMultipleAdvertising failed: STATUS 152`, `Server.LE.Scan Failed to add rule`)
+are **not** caused by this patch - they also appear in logs where the keyboard connected fine, and
+in logs from 2026-11-10.
+
+> Default behaviour is identical to 2.6.0 unless `-ibtpguard` is passed.
+
+### Building without Xcode
+
+The macOS 26 `ld` no longer synthesises `_kmod_info`, so a hand-linked kext fails with
+`kexts must have a _kmod_info symbol` and OpenCore skips it silently. The repo script handles this:
+
+```sh
+zsh scripts/build-local.sh 2.6.1
+```
+
+It generates `kmod_info.cpp`, fills in the `Info.plist` platform keys, and asserts both `_kmod_info`
+and `CFBundleSupportedPlatforms` are present. Two gotchas: `TARGET_OS_OSX` in
+`MacKernelSDK/Headers/TargetConditionals.h` must be 0, and `-D` values must not contain spaces.
+
+### Current pinned version
+
+- `Kexts/IntelBTPatcher.kext`: 2.6.1, sha256 `c3967d6ed13d6e65a7a21775639c28413b76a63d1a7aa3eed9ef486b39667512`
+- boot-args still `-ibtpwrap` (no `-ibtpguard`, i.e. 2.6.0 behaviour)

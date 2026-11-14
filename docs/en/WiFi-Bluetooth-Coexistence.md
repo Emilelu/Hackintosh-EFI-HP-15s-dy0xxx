@@ -10,7 +10,7 @@ The RTL8821CE is a **Wi-Fi + Bluetooth combo** chip: Wi-Fi runs over PCIe and Bl
 
 | Function | Bus | Hardware ID | Driver / Component |
 |:---|:---|:---|:---|
-| Wi-Fi | PCIe | `10EC:C821` / subsystem `103C:831A` | `AirPortRTW.kext` 1.2.0 + `RealtekAirPortRTWFix` |
+| Wi-Fi | PCIe | `10EC:C821` / subsystem `103C:831A` | `AirPortRTW.kext` 1.2.1-coex + `RealtekAirPortRTWFix` |
 | Bluetooth | USB | `0BDA:B00A` | `RealtekBluetoothFirmware.kext` 1.0.2 (official release) + `BlueToolFixup.kext` 2.7.3 + `RealtekBTPatcher.kext` |
 | RF / antenna | — | 2.4GHz / 5GHz shared | Hardware coexistence arbitration; cannot be fully isolated on the driver side |
 
@@ -37,10 +37,10 @@ The RTL8821CE is a **Wi-Fi + Bluetooth combo** chip: Wi-Fi runs over PCIe and Bl
 
 ## 4. Fix Combination
 
-### 4.1 Wi-Fi: AirPortRTW 1.2.0 + RealtekAirPortRTWFix
+### 4.1 Wi-Fi: AirPortRTW 1.2.1-coex + RealtekAirPortRTWFix
 
-- **`AirPortRTW.kext` 1.2.0**: upstream [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW), providing a native macOS `IO80211` Wi-Fi interface for the RTL8821CE.
-- **`RealtekAirPortRTWFix`**: [Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix), which fixes RTL8821CE Wi-Fi / BT RF coexistence while preserving 1.2.0 functionality. In practice, follow that repository's instructions to merge the fix into the `AirPortRTW.kext` build or load it as the corresponding patch; **do not keep two copies of `AirPortRTW` from unknown sources at the same time**.
+- **`AirPortRTW.kext` 1.2.1-coex**: upstream [JoMei9019-real/AirPort-RTW](https://github.com/JoMei9019-real/AirPort-RTW) 1.2.1, providing a native macOS `IO80211` Wi-Fi interface for the RTL8821CE. 1.2.1 adds **PCI TX serialization**: data, scan-null and management producers no longer race for the same NIC transmit slot, fixing the "large download stalls while Wi-Fi still reports connected" bug.
+- **`RealtekAirPortRTWFix`**: [Emilelu/RealtekAirPortRTWFix](https://github.com/Emilelu/RealtekAirPortRTWFix), which fixes RTL8821CE Wi-Fi / BT RF coexistence while preserving upstream 1.2.1 functionality (the only source change is disabling `rtw88_force_wifi_only()`). In practice, follow that repository's instructions to merge the fix into the `AirPortRTW.kext` build or load it as the corresponding patch; **do not keep two copies of `AirPortRTW` from unknown sources at the same time**.
 - Verified on this machine: **WPA3-Personal connects normally**, and the frequency of Bluetooth audio / BLE disconnects drops noticeably when Wi-Fi is busy.
 
 ### 4.2 Bluetooth: the Official Release Binary Is Mandatory
@@ -59,7 +59,7 @@ The RTL8821CE is a **Wi-Fi + Bluetooth combo** chip: Wi-Fi runs over PCIe and Bl
 
 - Both try to match the same Realtek PCI device (`10EC:C821`); loading both causes duplicate matching, `IOService` contention, and a random winner for binding, manifesting as intermittent Wi-Fi, boot hangs, or even kernel panics.
 - `AirPort_RTW88` targets the RTW88 series (such as the RTL8822CE), and its device ID table differs from the RTL8821CE `AirPortRTW` path; mixing them yields no benefit.
-- Keep only `AirPortRTW.kext` 1.2.0 (with the `RealtekAirPortRTWFix` fix).
+- Keep only `AirPortRTW.kext` 1.2.1-coex (with the `RealtekAirPortRTWFix` fix).
 
 ## 5. Recommended Load Order
 
@@ -67,7 +67,7 @@ In `Kernel → Add`, keep the following relative order (the exact `BundlePath` d
 
 ```text
 Lilu.kext
-AirPortRTW.kext                 (1.2.0 + RealtekAirPortRTWFix build)
+AirPortRTW.kext                 (1.2.1-coex + RealtekAirPortRTWFix build)
 RealtekBluetoothFirmware.kext   (1.0.2 official release)
 BlueToolFixup.kext              (2.7.3)
 RealtekBTPatcher.kext
