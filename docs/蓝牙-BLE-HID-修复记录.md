@@ -454,3 +454,80 @@ zsh scripts/build-local.sh 2.6.1
 
 - `Kexts/IntelBTPatcher.kext`：2.6.1，sha256 `c3967d6ed13d6e65a7a21775639c28413b76a63d1a7aa3eed9ef486b39667512`
 - boot-args 仍为 `-ibtpwrap`（不带 `-ibtpguard`，即 2.6.0 行为）
+
+## 12. 重要：`bluetoothd` 的 `codesign` 失败是正常现象
+
+排查蓝牙故障时很容易踩这个坑，记下来避免重复走弯路。
+
+### 现象
+
+```sh
+codesign -v /usr/sbin/bluetoothd
+# /usr/sbin/bluetoothd: invalid signature (code or signature have been modified)
+```
+
+文件 sha256 也与 Apple 原版不同，只有 11 个字节有差异，集中在三处：
+
+```
+0x0edd1e   1 字节
+0x1e7bb7   8 字节连续 0x90（NOP sled）
+0x45c13e   45 31 f6 eb 25   （原版为 45 85 f6 74 25）
+```
+
+### 原因
+
+这三处是 **`-btlfxa2dpcheck` 生效时 BlueToolFixup 自己写进去的**。它通过
+`_cs_validate_page` 路由，在 `/usr/sbin/bluetoothd` 的代码页被内核校验之前原地改写：
+
+- `0x45c13e` 是 A2DP gate：`test r14d,r14d; je` → `xor r14d,r14d; jmp`，让 bluetoothd 无条件走
+  audio-publish 路径（这是 AirPods 音频不断续的关键）；
+- `0x1e7bb7` 是 `searchAndPatch` 留下的 NOP sled。
+
+都是合法 x86 指令，不是位翻转，也不是磁盘损坏。
+
+### 决定性判据（下次别再怀疑磁盘）
+
+只切换守护进程，不动磁盘：
+
+```sh
+sudo launchctl bootout system/com.apple.bluetoothd
+sudo purge
+shasum -a 256 /usr/sbin/bluetoothd     # -> GOOD 579bb5f5…（Apple 原版）
+sudo launchctl kickstart -k system/com.apple.bluetoothd
+shasum -a 256 /usr/sbin/bluetoothd     # -> BAD  c31f8ff4…
+```
+
+**字节跟着进程走，说明是进程改的，不是存储坏了。** 另一个挂载点
+（`/System/Volumes/Update/mnt1/usr/sbin/bluetoothd`）有独立的页缓存条目、从不被补丁触碰，
+所以它永远哈希正确——这曾经被误读成「启动快照被损坏」。
+
+### 由此得出的三条结论
+
+1. **不要移除 `-btlfxa2dpcheck`**。移除后 AirPods 音频会断断续续。它是必选项。
+2. **`btpurge-watch.sh` 绝不能拿文件哈希当健康判据**。只要 bluetoothd 在跑，文件看起来永远是
+   「坏的」，哈希判据会让看门狗每 60 秒触发一次无限重启。现在的 v3 只看控制器状态
+   （`State` / `Firmware` / `Address`）。
+3. **偶发的 `EXC_BAD_ACCESS (SIGBUS)` 是这个补丁的固有代价**，不是硬件故障。bluetoothd 是
+   APFS 压缩二进制，页被改写后再次缺页需要从压缩流重新解压，解出来的字节与记录的哈希不符，
+   缺页失败 → 进程收 `SIGBUS`。要根治只能改补丁的落点（改到非 `__TEXT` 位置或改为函数 hook），
+   不能靠重装系统或换 SSD。
+
+### 顺带澄清：`-25291` 也不是键盘连不上的原因
+
+`bluetoothd` 日志里频繁出现
+
+```
+Failed to query keychain for device Random D3:0C:D1:FA:CA:CA with result -25291
+```
+
+`-25291` = `errSecNotAvailable`。它看起来像是「补丁破坏了签名 → 拿不到 keychain 权限 →
+读不出绑定密钥 → HID 连不上」，但数据不支持：
+
+- 同一次开机里：`-25291` 出现 **523 次**，同时 `Encryption is now enabled` **成功 7 次**；
+- 2026-11-13 11 点：342 次 `-25291` **且**键盘成功加密连接；
+- 2026-11-14 23:32:40：`Outgoing connection … successful` → `Encryption is now enabled`，
+  当时 `-btlfxa2dpcheck` 正在生效。
+
+它是这颗 Realtek 芯片在 Tahoe 上的背景噪声。键盘真正偶发失败的原因是
+**BLE 键盘空闲时不广播**（只在按键瞬间广播）加上开机竞态，见本文档前面的章节。
+

@@ -469,3 +469,89 @@ and `CFBundleSupportedPlatforms` are present. Two gotchas: `TARGET_OS_OSX` in
 
 - `Kexts/IntelBTPatcher.kext`: 2.6.1, sha256 `c3967d6ed13d6e65a7a21775639c28413b76a63d1a7aa3eed9ef486b39667512`
 - boot-args still `-ibtpwrap` (no `-ibtpguard`, i.e. 2.6.0 behaviour)
+
+## 12. Important: `codesign` failing on `bluetoothd` is normal here
+
+This is easy to trip over while debugging Bluetooth, so it is written down.
+
+### Symptom
+
+```sh
+codesign -v /usr/sbin/bluetoothd
+# /usr/sbin/bluetoothd: invalid signature (code or signature have been modified)
+```
+
+Its sha256 also differs from Apple's, in just 11 bytes across three spots:
+
+```
+0x0edd1e   1 byte
+0x1e7bb7   8 consecutive 0x90 bytes (a NOP sled)
+0x45c13e   45 31 f6 eb 25   (original: 45 85 f6 74 25)
+```
+
+### Cause
+
+All three are written by **BlueToolFixup itself** when `-btlfxa2dpcheck` is active.
+It routes `_cs_validate_page` and rewrites code pages of `/usr/sbin/bluetoothd`
+in place, before the kernel validates them:
+
+- `0x45c13e` is the A2DP gate: `test r14d,r14d; je` becomes `xor r14d,r14d; jmp`,
+  making bluetoothd unconditionally take the audio-publish path (this is what stops
+  AirPods audio from breaking up);
+- `0x1e7bb7` is the NOP sled `searchAndPatch` leaves behind.
+
+Both are valid x86, not bit rot, and not disk damage.
+
+### The decisive test (stop suspecting the disk)
+
+Toggle only the daemon; touch no storage:
+
+```sh
+sudo launchctl bootout system/com.apple.bluetoothd
+sudo purge
+shasum -a 256 /usr/sbin/bluetoothd     # -> GOOD 579bb5f5… (Apple original)
+sudo launchctl kickstart -k system/com.apple.bluetoothd
+shasum -a 256 /usr/sbin/bluetoothd     # -> BAD  c31f8ff4…
+```
+
+**The bytes follow the process, so the process is the author.** The file's other
+vnode (`/System/Volumes/Update/mnt1/usr/sbin/bluetoothd`) has its own page-cache
+entry that the patcher never touches, which is why it always hashes clean — that
+once got misread as "the boot snapshot is corrupted".
+
+### Three consequences
+
+1. **Do not remove `-btlfxa2dpcheck`.** Without it AirPods audio breaks up.
+2. **`btpurge-watch.sh` must never use the file hash as a health criterion.** While
+   bluetoothd runs, the file always looks "bad", so a hash check would make the
+   watchdog restart it every 60 seconds forever. v3 judges controller state only
+   (`State` / `Firmware` / `Address`).
+3. **The occasional `EXC_BAD_ACCESS (SIGBUS)` is the inherent cost of this patch**,
+   not a hardware fault. bluetoothd is an APFS-compressed binary; once a page has
+   been rewritten, a later fault must re-decompress it from the compressed stream,
+   the result no longer matches the recorded hash, the fault fails and the process
+   takes a `SIGBUS`. Fixing that means changing *where* the patch lands (a
+   non-`__TEXT` site, or a function hook) — reinstalling macOS or replacing the SSD
+   will not help.
+
+### Also: `-25291` is not why the keyboard fails
+
+`bluetoothd` logs
+
+```
+Failed to query keychain for device Random D3:0C:D1:FA:CA:CA with result -25291
+```
+
+`-25291` is `errSecNotAvailable`. It looks like "the patch invalidated the signature,
+so bluetoothd lost its keychain entitlement, so it cannot read the bond, so HID fails",
+but the numbers refuse that story:
+
+- one single boot: **523** occurrences of `-25291` **and** 7 successful
+  `Encryption is now enabled`;
+- 2026-11-13, 11:00 hour: 342 `-25291` **and** a successful encrypted keyboard connection;
+- 2026-11-14 23:32:40: `Outgoing connection … successful` →
+  `Encryption is now enabled`, with `-btlfxa2dpcheck` active.
+
+It is background noise on this Realtek/Tahoe combination. The keyboard's real
+intermittent failure is that **a BLE keyboard does not advertise while idle** (only
+on a keypress) plus a boot-time race, covered earlier in this document.
